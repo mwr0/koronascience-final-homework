@@ -1,0 +1,74 @@
+# uncomment if scikit-learn is not installed
+# !pip3 install --user scikit-learn
+from typing import List
+
+import datetime
+import os
+
+import numpy as np
+import pandas as pd
+import plotly.express as px
+
+from sklearn.preprocessing import Normalizer, StandardScaler, MaxAbsScaler
+from sklearn.cluster import KMeans
+
+
+# confirmed cases
+url = f"https://raw.githubusercontent.com/CSSEGISandData/COVID-19/a9f182afe873ce7e65d2307fcf91013c23a4556c" \
+      f"/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv"
+dfC_orig = pd.read_csv(url, error_bad_lines=False)
+
+# deaths
+url = f"https://raw.githubusercontent.com/CSSEGISandData/COVID-19/a9f182afe873ce7e65d2307fcf91013c23a4556c" \
+      f"/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv"
+dfD_orig = pd.read_csv(url, error_bad_lines=False)
+
+# recovered cases
+url = f"https://raw.githubusercontent.com/CSSEGISandData/COVID-19/a9f182afe873ce7e65d2307fcf91013c23a4556c" \
+      f"/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv"
+dfR_orig = pd.read_csv(url, error_bad_lines=False)
+
+# prepare data
+dfC = dfC_orig.copy()
+dfD = dfD_orig.copy()
+dfR = dfR_orig.copy()
+
+dfC = dfC.groupby("Country/Region").sum()
+dfD = dfD.groupby("Country/Region").sum()
+dfR = dfR.groupby("Country/Region").sum()
+# necessary for the map:
+dfC.insert(0,"Country/Region",dfC.index)
+dfD.insert(0,"Country/Region",dfC.index)
+dfR.insert(0,"Country/Region",dfC.index)
+
+c_np = dfC.iloc[:,3:].values
+d_np = dfD.iloc[:,3:].values
+r_np = dfR.iloc[:,3:].values
+
+np_union = np.concatenate((c_np, d_np, r_np), axis=1)
+
+# clustering
+
+# prepare data Normalizer, StandardScaler, MaxAbsScaler
+# normalize (by example)
+for data_preprocessor in [Normalizer, StandardScaler, MaxAbsScaler]:
+
+    prcessed_data = data_preprocessor().fit_transform(np_union)
+    continents_num = 6
+    kmeans_clust = KMeans(n_clusters=continents_num, n_init=20, max_iter=300, random_state=1)
+    kmeans_clust.fit(prcessed_data)
+    region_clusters = [x+1 for x in kmeans_clust.labels_]
+
+    final_df = pd.DataFrame(dfC.iloc[:,:3])
+    final_df["Cluster"] = region_clusters
+    final_df["size"] = 1
+
+
+    # draw on map
+    fig = px.scatter_geo(final_df, locations="Country/Region", locationmode='country names', 
+                         color="Cluster", size="size", hover_name="Country/Region", 
+                         color_discrete_sequence="Cluster",
+                         projection="natural earth",
+                         title=f'Clusters by epidemy character - {data_preprocessor.__name__}')
+
+    fig.show()
